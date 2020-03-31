@@ -14,6 +14,8 @@ allData <- read.csv(SOURCE)
 # Check if updated
 if (
   tail(names(allData),1) == 
+  gsub("^X0","X", format(Sys.Date()-1, "X%m.%e.%y")) |
+  tail(names(allData),1) == 
   gsub("^X0","X", format(Sys.Date()-1, "X%m.%e.%Y"))
 )
 {
@@ -28,7 +30,7 @@ setwd("g:/projects/covid")
 TIMESTAMP <- format(Sys.time(), format = "%Y-%m-%d")
 DATE <- format(Sys.Date(), "%m/%d/%y")
 
-PPTX <- read_pptx("g:/projects/stanpumpr/misc/Template.pptx")
+PPTX <- read_pptx("Template.pptx")
 MASTER <- "Office Theme"
 SLIDE <- 1
 pptxfileName <- paste0("Steve's COVID Analysis.", TIMESTAMP, ".pptx")
@@ -40,11 +42,11 @@ nextSlide <- function (PLOT, Title)
   )
   
   PPTX <- add_slide(PPTX, layout = "Title and Content", master = MASTER)
-  PPTX <- ph_with_text(PPTX, type = "title", str = Title)
+  PPTX <- ph_with(PPTX, value = Title, location = ph_location_type("title"))
   suppressWarnings(
-    PPTX <<- ph_with_vg(PPTX, code = print(PLOT), type = "body")
+    PPTX <<- ph_with(PPTX, value = dml(ggobj = PLOT), location = ph_location_fullsize())
   )
-  PPTX <<- ph_with_text(PPTX, type = "sldNum", str = SLIDE)
+  PPTX <<- ph_with(PPTX, value = SLIDE, location = ph_location_type("sldNum"))
   SLIDE <<- SLIDE + 1 
 }
 
