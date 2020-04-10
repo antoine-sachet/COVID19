@@ -1,20 +1,24 @@
 # COVID19
-Models for simple log linear regression of data from usafacts.org
+Tracking the COVID-19 pandemic
 
 Caveats / Comments
 
-This is my analysis, not Stanford’s analysis. My understanding is that Stanford’s internal analysis, done to plan resource allocation at Stanford, shows substantially longer doubling times. This is reassuring for those of us working at Stanford.
+This is not confidential. The analyses and R program code and can be freely shared.
 
-The data are from usafacts.org. Here is the file: https://usafactsstatic.blob.core.windows.net/public/data/covid-19/covid_confirmed_usafacts.csv. The data are collected from state and county public health departments. 
+This is my analysis, not Stanford's. 
 
-The only statistical fits I’m doing are simple log-linear regressions, guided by visual inspection of the data. Nothing more. If you graph log cases vs. time on an Etch-a-Sketch, you can produce a nearly identical result with the magnet pen. 
+Data sources:
+       USA Data:     https://usafactsstatic.blob.core.windows.net/public/data/covid-19/covid_confirmed_usafacts.csv.
+       Global Data:  https://github.com/CSSEGISandData/COVID-19. This is the Johns Hopkins data repository.
 
-I’m only projecting ahead by 1 week. I dropped the second week yesterday. Since the curves are flattening, the log linear projection for the second week is probably worse than “worst case” projections.
+Nate Silver has an excellent write-up on the potential problems of the data (see https://fivethirtyeight.com/features/coronavirus-case-counts-are-meaningless/). He is right, of course, but these data are all we have. Also, he does not address the fact that the data are consistent with the expectations. Specifically, the increases are initially log-linear, but then "flatten" as expected when public health policies are implemented. We would not see this if the data were just random noise.
 
-The idiosyncratic locations chosen for the analysis reflect where Pamela and I have friends and family. I’m happy to add other graphs of interest. Also, I’m happy to add people to the blind CC distribution list. Just let me know.
+Asymptotic Model: log(y) = intercept + (peak - intercept) * (1 - exp(k * time)). The constant k describes the rate of approach to steady state, such that 0.693/k is the half-time to steady state. 
 
-I’m hoping to move this to Shiny over the next week. If so, it will be available online, and anyone can access the analysis, specify the log linear portion for regression for any state or county, and project out for a week. I’ll also move the code to GitHub. 
+Not surprisingly, the model is wrong. As Yogi Berra said, "It's tough to make predictions, especially about the future." The model is hugely sensitive to exactly what data points are chosen, and the predicted peak can change by an order of magnitude based on the starting estimate. Additionally, the model assumes that everything will stay the same. Everything will not stay the same. Testing is ramping up. More and more patients are being tested, which will result in picking up more asymptomatic infections and reducing the apparent mortality. Additionally, social distancing may be reduced to mitigate the economic consequences. Even if the model were perfect, it could not anticipate changes changes in policy. The prediction that is a week out is likely quite close. Predictions of peak case numbers over the next week or so are also likely accurate. Beyond that, it's mostly a guess.
 
-I’ve added two map graphs: doubling rate, and 1 week projection of cases per 10,000 population. I plotted these to see the emerging hot spots. The news is (appropriately) focused on New York. My understanding is that epidemics start in the crowded cities, but that public health measures are also most quickly implemented in big cities. Rural communities eventually fare the worst. There is a hint of that in the map graphs. The most rapid doubling times include Idaho, Indiana, West Virginia, Oklahoma, and Missouri. We hear a lot about the Northeast states (Massachusetts, Pennsylvania, and New Jersey), and they still have the most cases. However, Washington has hugely increased doubling time (> 5 days currently), and New York has also made huge progress.
+The idiosyncratic locations are where Pamela and I have family or friends, or are locations requested by friends. I'm happy to add other regions. Also, I'm happy to add people to the blind CC distribution list. Just let me know.
+
+Please send any questions to steven.shafer@stanford.edu.
 
 Steven L. Shafer, MD
