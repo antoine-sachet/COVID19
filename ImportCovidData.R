@@ -74,6 +74,16 @@ Cases_Global <- read.csv(SOURCE, stringsAsFactors = FALSE)
 SOURCE <- "https://github.com/CSSEGISandData/COVID-19/raw/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv"
 Deaths_Global <- read.csv(SOURCE, stringsAsFactors = FALSE)
 
+X <- 5:ncol(Cases_Global)
+Dates <- gsub("X", "", names(Cases_Global)[X])
+DATA <- data.frame(
+  Date = Dates,
+  Shanghai_Cases = unlist(Cases_Global[Cases_Global == "Shanghai", X]),
+  Shanghai_Deaths = unlist(Deaths_Global[Deaths_Global == "Shanghai", X]),
+  Beijing_Cases = unlist(Cases_Global[Cases_Global == "Beijing", X]),
+  Beijing_Deaths = unlist(Deaths_Global[Deaths_Global == "Beijing", X])
+)
+write.csv(DATA, file = "Beijing.Shanghai.COVID.csv", row.names = FALSE)
 # Notes
 # Verified that data are in exactly the same order
 
@@ -232,3 +242,10 @@ Counties <- read.csv(SOURCE, stringsAsFactors = FALSE)
 Counties$FIPS <- Counties$STATEFP * 1000 + Counties$COUNTYFP
 Counties <- Counties[,c("LONGITUDE", "LATITUDE", "FIPS")]
 Counties <- usmap_transform(Counties)
+
+# IHME Data
+SOURCE <- "https://ihmecovid19storage.blob.core.windows.net/latest/ihme-covid19.zip"
+temp <- "IHME.zip"
+download.file(SOURCE, temp)
+fileNames <- unzip(temp, list=FALSE)
+IHME <- read.csv(fileNames[1], stringsAsFactors=FALSE)

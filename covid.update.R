@@ -110,18 +110,23 @@ covid_fn <- function(par, N)
   return(par[1] + (par[2] - par[1]) * (1-exp(-par[3] * 0:(N-1))))
 }
 
-covid_obj <- function(par, Y)
+covid_obj <- function(par, Y, weight)
 {
-  return(sum((Y-covid_fn(par, length(Y)))^2))
+  return(
+    sum(
+      (Y-covid_fn(par, length(Y)))^2 * (1:length(Y))^weight
+  )
+  )
 }
 
-covid_fit <-  function(Y, maxCases)
+covid_fit <-  function(Y, maxCases, weight = 1)
 {
   return(
     optim(
       c(Y[1],4, 0.8),
       covid_obj,
       Y = Y,
+      weight = weight,
     method = "L-BFGS-B",
     lower = c(Y[1] - 1, Y[1] - 1, 0.01),
     upper = c(Y[1] + 1, maxCases, 0.693)
@@ -164,7 +169,8 @@ plotPred <- function(
   Country = NULL,
   Title, 
   logStart, 
-  logEnd
+  logEnd,
+  weight = 1
   )
   {
   
@@ -250,22 +256,34 @@ plotPred <- function(
     maxCases <- log(maxCases)
 
     # Log linear phase
-    Y <- log(CASES$Actual[CASES$Phase == "Log linear"])
-    X <- 1:length(Y)
-    coefs <- lm(Y ~ X)$coefficients
-    Intercept <- coefs[1]
-    slope <- coefs[2]
-    X <- start:nrow(CASES)
-    CASES$Predicted.LL[X] <- exp(Intercept + 1:length(X) * slope)
+    if (sum(CASES$Phase == "Log linear") > 1)
+    {
+      Y <- log(CASES$Actual[CASES$Phase == "Log linear"])
+      X <- 1:length(Y)
+      coefs <- lm(Y ~ X)$coefficients
+      Intercept <- coefs[1]
+      slope <- coefs[2]
+      X <- start:nrow(CASES)
+      CASES$Predicted.LL[X] <- exp(Intercept + 1:length(X) * slope)
+    } else {
+      slope = NA
+    }
 
     # Current
     use <- CASES$Date >= as.Date(logEnd) & !is.na(CASES$Actual)
     Y <- log(CASES$Actual[use])
-    fit <- covid_fit(Y, maxCases)
+    fit <- covid_fit(Y, maxCases, weight)
     
+    # Last 5 days
+    Y <- log(CASES$Actual[CASES$Date > today - 6 & CASES$Date < today])
+    X <- 1:length(Y)
+    coefs <- lm(Y ~ X)$coefficients
+    last5Doubling <- 0.693 / coefs[2]
+
     # Bootstrap
-    results <- covid_bootstrap(Y, fit, maxCases)
-    
+    # results <- covid_bootstrap(Y, fit, maxCases)
+
+    # Prediction over next week
     X <- end:nrow(CASES)
     L <- length(X)
     CASES$Predicted.SD[X] <- exp(covid_fn(fit, L))
@@ -277,7 +295,7 @@ plotPred <- function(
       DATA <- CASES
     }
 
-    caption <- paste0("Initial doubling: ", sprintf("%0.1f", 0.693/slope), " days, Predicted peak: ", prettyNum(round(exp(fit[2]) , 0),big.mark = ",", scientific = FALSE))
+    caption <- paste0("Initial doubling: ", sprintf("%0.1f", 0.693/slope), " days, last 5 days ",sprintf("%0.1f", last5Doubling)) #, Predicted peak: ", prettyNum(round(exp(fit[2]) , 0),big.mark = ",", scientific = FALSE))
 
     DATA$Phase <- factor(as.character(DATA$Phase), levels=c("Pre log linear","Log linear","Current", "Deaths"), ordered = TRUE)
   #  DEATHS$Phase <- factor(as.character(DEATHS$Phase), levels=c("Pre log linear","Log linear","Current", "Deaths"), ordered = TRUE)
@@ -341,7 +359,7 @@ plotPred <- function(
     L <- length(X)
     DELTA$Total[X] <- exp(covid_fn(fit, L))
 
-    # Cumulative case numbers cannot drop
+    # Cumulative case numbers cannot drop, needed because of merging reported cases with predicted cases.
     N <- nrow(DELTA)
     DELTA$Total[is.na(DELTA$Total)] <- 0
     for (i in N:2)
@@ -432,30 +450,44 @@ plotPred <- function(
 
   # US Data
   Country <- "United States of America"
+  County <- NULL
+  State <- NULL
   logStart <- "2020-02-29"
   logEnd   <- "2020-03-22"
   Title <- "USA"
   plotPred(Country = "United States of America", Title = "USA", logStart = "2020-02-28", logEnd = "2020-03-21")
-  plotPred(County = "New York County", Title = "New York City", logStart = "2020-03-02", logEnd = "2020-03-21")
-  plotPred(County = c("Santa Clara County", "San Mateo County"), Title = "Santa Clara and San Mateo", logStart = "2020-03-02", logEnd = "2020-03-18")
+  plotPred(County = "New York County", Title = "New York City", logStart = "2020-03-02", logEnd = "2020-03-21", 
+           weight = 2)
+  plotPred(State = "CA", Title = "California", logStart = "2020-03-02", logEnd = "2020-03-20", weight = 1.5)
+  plotPred(County = c("Santa Clara County", "San Mateo County"), Title = "Santa Clara and San Mateo", 
+           logStart = "2020-03-02", logEnd = "2020-03-18", weight = 1.5)
   plotPred(County = "San Francisco County", Title = "San Francisco", logStart = "2020-03-07", logEnd = "2020-03-25")
   plotPred(County = "San Luis Obispo County", Title = "San Luis Obispo", logStart = "2020-03-16", logEnd = "2020-03-25")
-  plotPred(County = "King County", State = "WA", Title = "King County (Seattle)", logStart = "2020-02-29", logEnd = "2020-03-10")
+  plotPred(County = "King County", State = "WA", Title = "King County (Seattle)", logStart = "2020-02-29", logEnd = "2020-03-10", weight=0)
+  plotPred(County = "Los Angeles County", State = "CA", Title = "Los Angeles", logStart = "2020-03-04", 
+           logEnd = "2020-03-27", weight = 1.5)
   plotPred(County = "Multnomah County", Title = "Multnomah County (Portland)", logStart = "2020-03-16", logEnd = "2020-03-23")
-  plotPred(County = "Westchester County", Title = "Westchester County", logStart = "2020-03-15", logEnd = "2020-03-24")
+  plotPred(County = "Westchester County", Title = "Westchester County", logStart = "2020-03-15", 
+           logEnd = "2020-03-24", weight = 1.5)
   plotPred(County = "Alameda County", Title = "Alameda County", logStart = "2020-03-05", logEnd = "2020-03-24")
   plotPred(County = c("Santa Clara County", "San Mateo County", "San Francisco County", "Marin County", "Napa County", "Solano County", "Sonoma County"), Title = "Bay Area", logStart = "2020-03-02", logEnd = "2020-03-12")
-  plotPred(State = "CA", Title = "California", logStart = "2020-03-02", logEnd = "2020-03-20")
   plotPred(County = "De Soto Parish", Title = "De Soto Parish, Louisiana", logStart = "2020-03-22", logEnd = "2020-03-25")
-  plotPred(County = "Bergen County", Title = "Bergen County", logStart = "2020-03-14", logEnd = "2020-03-20")
+  plotPred(County = "Bergen County", Title = "Bergen County", logStart = "2020-03-14", 
+           logEnd = "2020-03-20", weight = 1.5)
   plotPred(County = "Dallas County", State = "TX", Title = "Dallas Texas", logStart = "2020-03-10", logEnd = "2020-03-20")
+  plotPred(County = "Collin County", State = "TX", Title = "Collin Texas", logStart = "2020-03-19", logEnd = "2020-03-20")
+  plotPred(County = "Harris County", State = "TX", Title = "Harris County, Texas", logStart = "2020-03-20", logEnd = "2020-03-21")
   plotPred(County = "McLean County", State = "IL", Title = "McLean County, Illinois", logStart = "2020-03-20", logEnd = "2020-03-23")
   plotPred(County = "Cook County", State = "IL", Title = "Cook County, Illinois", logStart = "2020-03-06", logEnd = "2020-03-20")
   plotPred(County = "Suffolk County", State = "MA", Title = "Suffolk County (Boston)", logStart = "2020-03-10", logEnd = "2020-03-24")
   plotPred(State = "UT", Title = "Utah (State)", logStart = "2020-03-02", logEnd = "2020-03-18")
-  plotPred(County = "Utah County", Title = "Utah County", logStart = "2020-03-02", logEnd = "2020-03-20")
+  plotPred(County = "Utah County", Title = "Utah County", logStart = "2020-03-02", logEnd = "2020-03-26", weight=1.5)
   plotPred(County = "Polk County", State = "IA", Title = "Polk County, Iowa", logStart = "2020-03-02", logEnd = "2020-03-20")
-
+  plotPred(County = "Oakland County", State = "MI", Title = "Oakland County, Michigan", logStart = "2020-03-02", logEnd = "2020-03-22")
+  plotPred(State = "HI", Title = "Hawaii", logStart = "2020-03-02", logEnd = "2020-03-22")
+  plotPred(County = "City of St. Louis", Title = "St. Louis (City)", logStart = "2020-03-02", logEnd = "2020-03-25")
+  plotPred(County = "Baltimore City", Title = "Baltimore (City)", logStart = "2020-03-02", logEnd = "2020-03-25")
+  
   # Last week doubling times by state
   STATES <- data.frame(
     abbr = states$abbreviation,
@@ -471,193 +503,215 @@ plotPred <- function(
   X <- 1:7
   first <- last - 6
   
-for (i in 1:nrow(STATES))
-{
-  STATES$population[i] <- sum(Population_USA$Population[Population_USA$State == STATES$state[i]], na.rm = TRUE)    
-  Y <- log(
-    colSums(Cases_USA[
-    Cases_USA$State == STATES$abbr[i],
-    first:last], na.rm=TRUE)
-  )
-  fit <- lm(Y ~ X)$coefficients
-  STATES$intercept[i] <- fit[1]
-  STATES$slope[i] <- fit[2]
-  fit <- covid_fit(Y, log(STATES$population[i] / (1 +  asymptomatic)))
-  # Peak can't get higher than 70% of state population
-  STATES$intercept[i] <- fit[1]
-  STATES$peak[i] <- fit[2]
-  STATES$k[i] <- fit[3]
-}
+  for (i in 1:nrow(STATES))
+  {
+    STATES$population[i] <- sum(Population_USA$Population[Population_USA$State == STATES$state[i]], na.rm = TRUE)    
+    Y <- log(
+      colSums(Cases_USA[
+      Cases_USA$State == STATES$abbr[i],
+      first:last], na.rm=TRUE)
+    )
+    fit <- lm(Y ~ X)$coefficients
+    STATES$intercept[i] <- fit[1]
+    STATES$slope[i] <- fit[2]
+    fit <- covid_fit(Y, log(STATES$population[i] / (1 +  asymptomatic)))
+    # Peak can't get higher than 70% of state population
+    STATES$intercept[i] <- fit[1]
+    STATES$peak[i] <- fit[2]
+    STATES$k[i] <- fit[3]
+  }
+    
+  STATES$dtime <- 0.693/STATES$slope
+  STATES$PredWeek  <- exp(STATES$intercept + (STATES$peak - STATES$intercept) * (1-exp(-STATES$k *  7))) / STATES$population * 100
+  STATES$Pred30Day <- exp(STATES$intercept + (STATES$peak - STATES$intercept) * (1-exp(-STATES$k * 30))) / STATES$population * 100
   
-STATES$dtime <- 0.693/STATES$slope
-STATES$PredWeek  <- exp(STATES$intercept + (STATES$peak - STATES$intercept) * (1-exp(-STATES$k *  7))) / STATES$population * 100
-STATES$Pred30Day <- exp(STATES$intercept + (STATES$peak - STATES$intercept) * (1-exp(-STATES$k * 30))) / STATES$population * 100
-
-# USA Rate
-USAPopulation <- sum(STATES$population)
-Y <- log(colSums(Cases_USA[, first:last], na.rm=TRUE))
-fit <- lm(Y ~ X)$coefficients
-intercept <- fit[1]
-slope <- fit[2]
-USA <- 0.693/slope
-USAFit <- covid_fit(Y, log(USAPopulation))
-USAPredWeek   <- exp(USAFit[1] + (USAFit[2] - USAFit[1]) * (1-exp(-USAFit[3] *  7))) / USAPopulation * 100
-USAPred30Day  <- exp(USAFit[1] + (USAFit[2] - USAFit[1]) * (1-exp(-USAFit[3] * 30))) / USAPopulation * 100
-
-# By doubling time
-STATES$state <- factor(STATES$state, levels = STATES$state[order(STATES$dtime)], ordered = TRUE)
-Title <- paste("Steve's 7 day estimation of doubling time", Sys.Date())
-ggObject <- ggplot(STATES, aes(x=state, y=dtime)) +
-  geom_col(fill = "brown", color="black", width=.5) +
-  theme(axis.text.x=element_text(angle=60, hjust=1)) +
-  labs(
-    title = Title,
-      y = "Doubling Time",
+  # USA Rate
+  USAPopulation <- sum(STATES$population)
+  Y <- log(colSums(Cases_USA[, first:last], na.rm=TRUE))
+  fit <- lm(Y ~ X)$coefficients
+  intercept <- fit[1]
+  slope <- fit[2]
+  USA <- 0.693/slope
+  USAFit <- covid_fit(Y, log(USAPopulation))
+  USAPredWeek   <- exp(USAFit[1] + (USAFit[2] - USAFit[1]) * (1-exp(-USAFit[3] *  7))) / USAPopulation * 100
+  USAPred30Day  <- exp(USAFit[1] + (USAFit[2] - USAFit[1]) * (1-exp(-USAFit[3] * 30))) / USAPopulation * 100
+  
+  # By doubling time
+  STATES$state <- factor(STATES$state, levels = STATES$state[order(STATES$dtime)], ordered = TRUE)
+  Title <- paste("Steve's 7 day estimation of doubling time", Sys.Date())
+  ggObject <- ggplot(STATES, aes(x=state, y=dtime)) +
+    geom_col(fill = "brown", color="black", width=.5) +
+    theme(axis.text.x=element_text(angle=60, hjust=1)) +
+    labs(
+      title = Title,
+        y = "Doubling Time",
+        x = "State"
+      ) +
+    annotate("segment",x = 0.5, xend = 51.5, y = USA, yend = USA) +
+    annotate("text", label=paste("Overall US:", round(USA,1), "days"), x = 1, y=USA, hjust=0, vjust = -0.5)
+  nextSlide(ggObject, "Doubling Time")
+  
+  ggObject <- plot_usmap(data = STATES, values = "dtime", color = "black") +
+    scale_fill_continuous(
+      low = "red", high = "white", name = "Doubling Time", label = scales::comma
+    ) + theme(legend.position = "right") +
+    labs(
+      title = Title
+    )
+  nextSlide(ggObject, "Doubling Time")
+  
+  # Population Percent in 7 days
+  STATES$state <- factor(STATES$state, levels = STATES$state[order(STATES$PredWeek)], ordered = TRUE)
+  Title <- paste("Steve's projected cases for", endDate)
+  ggObject <- ggplot(STATES, aes(x=state, y=PredWeek)) +
+    geom_col(fill = "brown", color="black", width=.5) +
+    theme(axis.text.x=element_text(angle=60, hjust=1)) +
+  #  scale_y_continuous(breaks = c(0:5)) +
+    labs(
+      title = Title,
+      y = "Percent population in 7 days",
       x = "State"
     ) +
-  annotate("segment",x = 0.5, xend = 51.5, y = USA, yend = USA) +
-  annotate("text", label=paste("Overall US:", round(USA,1), "days"), x = 1, y=USA, hjust=0, vjust = -0.5)
-nextSlide(ggObject, "Doubling Time")
-
-ggObject <- plot_usmap(data = STATES, values = "dtime", color = "black") +
-  scale_fill_continuous(
-    low = "red", high = "white", name = "Doubling Time", label = scales::comma
-  ) + theme(legend.position = "right") +
-  labs(
-    title = Title
-  )
-nextSlide(ggObject, "Doubling Time")
-
-# Population Percent in 7 days
-STATES$state <- factor(STATES$state, levels = STATES$state[order(STATES$PredWeek)], ordered = TRUE)
-Title <- paste("Steve's projection for", endDate)
-ggObject <- ggplot(STATES, aes(x=state, y=PredWeek)) +
-  geom_col(fill = "brown", color="black", width=.5) +
-  theme(axis.text.x=element_text(angle=60, hjust=1)) +
-#  scale_y_continuous(breaks = c(0:5)) +
-  labs(
-    title = Title,
-    y = "Percent population in 7 days",
-    x = "State"
-  ) +
-  annotate("segment",x = 0.5, xend = 51.5, y = USAPredWeek, yend = USAPredWeek) +
-  annotate("text", label=paste("Overall US:", round(USAPredWeek,1), "percent"), x = 1, y=USAPredWeek, hjust=0, vjust = -0.5)
-nextSlide(ggObject, "All states in 7 days")
-
-ggObject <- plot_usmap(data = STATES, values = "PredWeek", color = "black") +
-  scale_fill_continuous(
-    low = "white", high = "red", name = "Percent", label = scales::comma
-  ) + theme(legend.position = "right") +
-  labs(
-    title = Title
-  )
-nextSlide(ggObject, "Percent population in 7 days")
-
-# Population Percent in 30 days
-STATES$state <- factor(STATES$state, levels = STATES$state[order(STATES$Pred30Day)], ordered = TRUE)
-Title <- paste("Steve's projection for", endDate)
-ggObject <- ggplot(STATES, aes(x=state, y=Pred30Day)) +
-  geom_col(fill = "brown", color="black", width=.5) +
-  theme(axis.text.x=element_text(angle=60, hjust=1)) +
-  #  scale_y_continuous(breaks = c(0:5)) +
-  labs(
-    title = Title,
-    y = "Percent population in 30 days",
-    x = "State"
-  ) +
-  annotate("segment",x = 0.5, xend = 51.5, y = USAPred30Day, yend = USAPred30Day) +
-  annotate("text", label=paste("Overall US:", round(USAPred30Day,1), "percent"), x = 1, y=USAPred30Day, hjust=0, vjust = -0.5)
-nextSlide(ggObject, "Percent population in 30 days")
-
-ggObject <- plot_usmap(data = STATES, values = "Pred30Day", color = "black") +
-  scale_fill_continuous(
-    low = "white", high = "red", name = "Percent", label = scales::comma
-  ) + theme(legend.position = "right") +
-  labs(
-    title = Title
-  )
-nextSlide(ggObject, "Percent population in 30 days")
-
-#USA Map of Cases by County
-CROWS <- match(Counties$FIPS, Cases_USA$CountyFIPS)
-Counties$Cases <- log(Cases_USA[CROWS,ncol(Cases_USA)])
-Counties$Cases[is.na(Counties$Cases)] <- 0
-Title <- paste("Distribution of Reported Cases as of", today)
-ggObject <- plot_usmap(regions = "counties") +
-  geom_point(data = Counties, aes(x = LONGITUDE.1, y=LATITUDE.1, size = Cases, color = Cases, alpha = Cases)) +
-  scale_color_gradient(low="white",high="red") +
-  scale_size(range = c(0, 4)) + 
-  scale_alpha(range = c(0, 1)) + 
-  theme(legend.position = "none") +
- labs(
-    title = Title
-  )
-nextSlide(ggObject, "Current US by County")
-
-# Worldwide
-plotPred(Country = "Italy", Title = "Italy", logStart = "2020-02-22", logEnd = "2020-03-10")
-plotPred(Country = "Spain", Title = "Spain", logStart = "2020-02-25", logEnd = "2020-03-13")
-plotPred(Country = "France", Title = "France", logStart = "2020-02-27", logEnd = "2020-03-10")
-plotPred(Country = "Portugal", Title = "Portugal", logStart = "2020-03-03", logEnd = "2020-03-17")
-plotPred(Country = "Sweden", Title = "Sweden", logStart = "2020-02-28", logEnd = "2020-03-10")
-plotPred(Country = "Netherlands", Title = "Netherlands", logStart = "2020-02-29", logEnd = "2020-03-06")
-plotPred(Country = "England", Title = "United Kingdom", logStart = "2020-02-26", logEnd = "2020-03-20")
-plotPred(Country = "South Africa", Title = "South Africa", logStart = "2020-03-08", logEnd = "2020-03-22")
-plotPred(Country = "Brazil", Title = "Brazil", logStart = "2020-03-08", logEnd = "2020-03-20")
-plotPred(Country = "Rwanda", Title = "Rwanda", logStart = "2020-03-12", logEnd = "2020-03-19")
-
-# World Map of Cases
-CROWS <- match(worldmap$geounit, Cases_Global$Country)
-worldmap$cases <- Cases_Global[CROWS, ncol(Cases_Global)]
-worldmap$lcases <- log(worldmap$cases)
-
-worldmap <- worldmap[!is.na(worldmap$lcases),]
+    annotate("segment",x = 0.5, xend = 51.5, y = USAPredWeek, yend = USAPredWeek) +
+    annotate("text", label=paste("Overall US:", round(USAPredWeek,1), "percent"), x = 1, y=USAPredWeek, hjust=0, vjust = -0.5)
+  nextSlide(ggObject, "All states in 7 days")
   
-ggObject <-   ggplot() + 
-    geom_sf(data = worldmap, color="#00013E", aes(fill=lcases)) +
-    scale_fill_gradient(low="#FFCFCF",high="#C00000") +
-    # coord_sf(
-    #   crs = st_crs('+proj=gall'),
-    #   xlim = c(-11168658, 11168658),
-    #   ylim = c(-6600000, 8500000),
-    #   expand = FALSE
-    # )+
-  labs(
-    title = paste("Total Cases as of", Sys.Date())
-  ) +
-    theme(
-      panel.background = element_rect(
-        fill = "#00013E"
-      ),
-      panel.grid.major = element_blank(),
-      panel.grid.minor = element_blank(),
-      legend.position = "none",
-      axis.title.x=element_blank(),
-      axis.text.x=element_blank(),
-      axis.ticks.x=element_blank(),
-      axis.title.y=element_blank(),
-      axis.text.y=element_blank(),
-      axis.ticks.y=element_blank()
+  ggObject <- plot_usmap(data = STATES, values = "PredWeek", color = "black") +
+    scale_fill_continuous(
+      low = "white", high = "red", name = "Percent", label = scales::comma
+    ) + theme(legend.position = "right") +
+    labs(
+      title = Title
     )
-# ggpubr::ggexport(
-#   ggObject,
-#   filename = "Worldmap.png", 
-#   resolution = 72,
-#   height = 144,
-#   width = 240,
-#   pointsize = 4,
-#   verbose = FALSE
-# )
-# pngfileName <- gsub(".png","001.png",pngfileName) #Weird!
-# print(ggObject)
-# 
-# pptx <- add_slide(pptx, layout = "Title and Content", master = master)
-# pptx <- ph_with(pptx, value = "Worldwide Distribution of cases", location = ph_location_type("title"))
-# pptx <- ph_with(pptx, external_img(src = "worldmap001.png"), location = ph_location_type("body"))
-# pptx <- ph_with(pptx, value = slideNumber, location = ph_location_type("sldNum"))
-nextSlide(ggObject, "Worldwide Distribution of Cases")
-
-print(pptx, target = pptxfileName)
-  } else {
+  nextSlide(ggObject, "Percent population in 7 days")
+  
+  # Population Percent in 30 days
+  STATES$state <- factor(STATES$state, levels = STATES$state[order(STATES$Pred30Day)], ordered = TRUE)
+  Title <- paste("Steve's projection for", endDate)
+  ggObject <- ggplot(STATES, aes(x=state, y=Pred30Day)) +
+    geom_col(fill = "brown", color="black", width=.5) +
+    theme(axis.text.x=element_text(angle=60, hjust=1)) +
+    #  scale_y_continuous(breaks = c(0:5)) +
+    labs(
+      title = Title,
+      y = "Percent population in 30 days",
+      x = "State"
+    ) +
+    annotate("segment",x = 0.5, xend = 51.5, y = USAPred30Day, yend = USAPred30Day) +
+    annotate("text", label=paste("Overall US:", round(USAPred30Day,1), "percent"), x = 1, y=USAPred30Day, hjust=0, vjust = -0.5)
+  nextSlide(ggObject, "Percent population in 30 days")
+  
+  ggObject <- plot_usmap(data = STATES, values = "Pred30Day", color = "black") +
+    scale_fill_continuous(
+      low = "white", high = "red", name = "Percent", label = scales::comma
+    ) + theme(legend.position = "right") +
+    labs(
+      title = Title
+    )
+  nextSlide(ggObject, "Percent population in 30 days")
+  
+  #USA Map of Cases by County
+  temp <- Counties
+  CROWS <- match(temp$FIPS, Cases_USA$CountyFIPS)
+  temp$Cases <- log(Cases_USA[CROWS,ncol(Cases_USA)])
+  temp$Cases[is.na(temp$Cases)] <- 0
+  Title <- paste("Distribution of Reported Cases as of", today)
+  ggObject <- plot_usmap(regions = "counties") +
+    geom_point(data = temp, aes(x = LONGITUDE.1, y=LATITUDE.1, size = Cases, color = Cases, alpha = Cases)) +
+    scale_color_gradient(low="white",high="red") +
+    scale_size(range = c(0, 4)) + 
+    scale_alpha(range = c(0, 1)) + 
+    theme(legend.position = "none") +
+   labs(
+      title = Title
+    )
+  nextSlide(ggObject, "Current US Cases by County")
+  
+  #USA Map of Deaths by County
+  temp <- Counties
+  CROWS <- match(temp$FIPS, Deaths_USA$CountyFIPS)
+  temp$Deaths <- log(Deaths_USA[CROWS,ncol(Deaths_USA)])
+  temp$Deaths[is.na(temp$Deaths)] <- 0
+  Title <- paste("Distribution of Deaths as of", today)
+  ggObject <- plot_usmap(regions = "counties") +
+    geom_point(data = temp, aes(x = LONGITUDE.1, y=LATITUDE.1, size = Deaths, color = Deaths, alpha = Deaths)) +
+    scale_color_gradient(low="white",high="red") +
+    scale_size(range = c(0, 4)) + 
+    scale_alpha(range = c(0, 1)) + 
+    theme(legend.position = "none") +
+    labs(
+      title = Title
+    )
+  nextSlide(ggObject, "Current US Deaths by County")
+  
+  # Worldwide
+  plotPred(Country = "Italy", Title = "Italy", logStart = "2020-02-22", logEnd = "2020-03-13", weight = 0)
+  plotPred(Country = "Spain", Title = "Spain", logStart = "2020-02-25", logEnd = "2020-03-13")
+  plotPred(Country = "France", Title = "France", logStart = "2020-02-27", logEnd = "2020-03-10")
+  plotPred(Country = "Portugal", Title = "Portugal", logStart = "2020-03-03", logEnd = "2020-03-17")
+  plotPred(Country = "Sweden", Title = "Sweden", logStart = "2020-02-28", logEnd = "2020-03-12")
+  plotPred(Country = "Netherlands", Title = "Netherlands", logStart = "2020-02-29", logEnd = "2020-03-06")
+  plotPred(Country = "England", Title = "United Kingdom", logStart = "2020-02-26", logEnd = "2020-03-20")
+  plotPred(Country = "South Africa", Title = "South Africa", logStart = "2020-03-08", logEnd = "2020-03-27", weight = 0)
+  plotPred(Country = "Brazil", Title = "Brazil", logStart = "2020-03-09", logEnd = "2020-03-21", weight = 0)
+  plotPred(Country = "Paraguay", Title = "Paraguay", logStart = "2020-03-09", logEnd = "2020-03-22", weight = 0)
+  plotPred(Country = "Rwanda", Title = "Rwanda", logStart = "2020-03-12", logEnd = "2020-03-19")
+  plotPred(Country = "Canada", Title = "Canada", logStart = "2020-03-10", logEnd = "2020-03-22")
+  plotPred(Country = "Australia", Title = "Australia", logStart = "2020-03-10", logEnd = "2020-03-18", weight=0)
+  plotPred(Country = "Israel", Title = "Israel", logStart = "2020-02-27", logEnd = "2020-03-25", weight=0)
+  
+  # World Map of Cases
+  CROWS <- match(worldmap$geounit, Cases_Global$Country)
+  worldmap$cases <- Cases_Global[CROWS, ncol(Cases_Global)]
+  worldmap$lcases <- log(worldmap$cases)
+  
+  worldmap <- worldmap[!is.na(worldmap$lcases),]
+    
+  ggObject <-   ggplot() + 
+      geom_sf(data = worldmap, color="#00013E", aes(fill=lcases)) +
+      scale_fill_gradient(low="#FFCFCF",high="#C00000") +
+      # coord_sf(
+      #   crs = st_crs('+proj=gall'),
+      #   xlim = c(-11168658, 11168658),
+      #   ylim = c(-6600000, 8500000),
+      #   expand = FALSE
+      # )+
+    labs(
+      title = paste("Total Cases as of", Sys.Date())
+    ) +
+      theme(
+        panel.background = element_rect(
+          fill = "#00013E"
+        ),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = "none",
+        axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks.y=element_blank()
+      )
+  # ggpubr::ggexport(
+  #   ggObject,
+  #   filename = "Worldmap.png", 
+  #   resolution = 72,
+  #   height = 144,
+  #   width = 240,
+  #   pointsize = 4,
+  #   verbose = FALSE
+  # )
+  # pngfileName <- gsub(".png","001.png",pngfileName) #Weird!
+  # print(ggObject)
+  # 
+  # pptx <- add_slide(pptx, layout = "Title and Content", master = master)
+  # pptx <- ph_with(pptx, value = "Worldwide Distribution of cases", location = ph_location_type("title"))
+  # pptx <- ph_with(pptx, external_img(src = "worldmap001.png"), location = ph_location_type("body"))
+  # pptx <- ph_with(pptx, value = slideNumber, location = ph_location_type("sldNum"))
+  nextSlide(ggObject, "Worldwide Distribution of Cases")
+  
+  print(pptx, target = pptxfileName)
+} else {
     cat("usafacts.org not updated yet\n")
-  }
+}
