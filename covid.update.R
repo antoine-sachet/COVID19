@@ -101,7 +101,7 @@
   
 closest <- function(a, b)
 {
-  which(abs(a-b) == min(abs(a-b)))[1]
+  which(abs(a-b) == min(abs(a-b), na.rm=TRUE))[1]
 }
 
 covid_fn <- function(par, N)
@@ -121,9 +121,12 @@ covid_obj <- function(par, Y, weight)
 
 covid_fit <-  function(Y, maxCases, weight = 1)
 {
+  Y1 <- tail(Y,5)
+  X1 <- 1:5
+  slope <- lm(Y1 ~ X1)$coefficients[2]
   return(
     optim(
-      c(Y[1],4, 0.8),
+      c(Y[1],Y[1] + 2, slope),
       covid_obj,
       Y = Y,
       weight = weight,
@@ -134,34 +137,6 @@ covid_fit <-  function(Y, maxCases, weight = 1)
   )
 }
 
-covid_obj_bootstrap <- function(par, intercept, Y, maxCases)
-{
-  return(sum((Y-covid_fn(c(intercept, par), length(Y)))^2))
-}
-
-covid_bootstrap <-  function(Y, initial, maxCases)
-{
-  results <- data.frame(
-    peak = rep(NA, bootstrapsN),
-    k = rep(NA, bootstrapsN)
-  )
-  for (i in 1: bootstrapsN)
-  {
-    fit <- 
-      optim(
-        c(initial[2], initial[3]),
-        covid_obj_bootstrap,
-        intercept = initial[1],
-        Y = sample(Y, length(Y), replace=TRUE),
-        method = "L-BFGS-B",
-        lower = c(initial[1], 0.01),
-        upper = c(maxCases, 0.693)
-      )$par
-    results$peak[i] <- fit[1]
-    results$k[i] <- fit[2]
-  }
-  return(results)
-}
 
 plotPred <- function(
   County = NULL, 
@@ -196,8 +171,7 @@ plotPred <- function(
       Date = Dates,
       Actual = c(colSums(Cases_USA[use, c(5:ncol(Cases_USA))],na.rm=TRUE), rep(NA, projection)),
       Phase = "",
-      Predicted.LL = NA,
-      Predicted.SD = NA,
+      Predicted = NA,
       stringsAsFactors = FALSE
     )
     
@@ -205,8 +179,7 @@ plotPred <- function(
       Date = Dates,
       Actual = c(colSums(Deaths_USA[use, c(5:ncol(Deaths_USA))],na.rm=TRUE), rep(NA, projection)),
       Phase = "Deaths",
-      Predicted.LL = NA,
-      Predicted.SD = NA,
+      Predicted = NA,
       stringsAsFactors = FALSE
     )
     FIPS <- Cases_USA$CountyFIPS[use]
@@ -221,8 +194,7 @@ plotPred <- function(
       Date = Dates,
       Actual = c(colSums(Cases_Global[use, c(2:ncol(Cases_Global))],na.rm=TRUE), rep(NA, projection)),
       Phase = "",
-      Predicted.LL = NA,
-      Predicted.SD = NA,
+      Predicted = NA,
       stringsAsFactors = FALSE
     )
     
@@ -230,8 +202,7 @@ plotPred <- function(
       Date = Dates,
       Actual = c(colSums(Deaths_Global[use, c(2:ncol(Deaths_Global))],na.rm=TRUE), rep(NA, projection)),
       Phase = "Deaths",
-      Predicted.LL = NA,
-      Predicted.SD = NA,
+      Predicted = NA,
       stringsAsFactors = FALSE
     )
     maxCases <- sum(Population_Global$Population[Population_Global$Country %in% Country], na.rm=TRUE) / (1 + asymptomatic)
@@ -255,20 +226,6 @@ plotPred <- function(
     DEATHS$Actual[DEATHS$Actual == 0 | is.na(DEATHS$Actual)] <- NA
     maxCases <- log(maxCases)
 
-    # Log linear phase
-    if (sum(CASES$Phase == "Log linear") > 1)
-    {
-      Y <- log(CASES$Actual[CASES$Phase == "Log linear"])
-      X <- 1:length(Y)
-      coefs <- lm(Y ~ X)$coefficients
-      Intercept <- coefs[1]
-      slope <- coefs[2]
-      X <- start:nrow(CASES)
-      CASES$Predicted.LL[X] <- exp(Intercept + 1:length(X) * slope)
-    } else {
-      slope = NA
-    }
-
     # Current
     use <- CASES$Date >= as.Date(logEnd) & !is.na(CASES$Actual)
     Y <- log(CASES$Actual[use])
@@ -280,14 +237,11 @@ plotPred <- function(
     coefs <- lm(Y ~ X)$coefficients
     last5Doubling <- 0.693 / coefs[2]
 
-    # Bootstrap
-    # results <- covid_bootstrap(Y, fit, maxCases)
-
     # Prediction over next week
     X <- end:nrow(CASES)
     L <- length(X)
-    CASES$Predicted.SD[X] <- exp(covid_fn(fit, L))
-    WeekPrediction <- tail(CASES$Predicted.SD, 1)
+    CASES$Predicted[X] <- exp(covid_fn(fit, L))
+    WeekPrediction <- tail(CASES$Predicted, 1)
     if (sum(DEATHS$Actual, na.rm = TRUE) > 0)
     {
       DATA <- rbind(CASES, DEATHS)
@@ -295,7 +249,7 @@ plotPred <- function(
       DATA <- CASES
     }
 
-    caption <- paste0("Initial doubling: ", sprintf("%0.1f", 0.693/slope), " days, last 5 days ",sprintf("%0.1f", last5Doubling)) #, Predicted peak: ", prettyNum(round(exp(fit[2]) , 0),big.mark = ",", scientific = FALSE))
+    caption <- paste0("Doubling time over past 5 days ",sprintf("%0.1f", last5Doubling)) 
 
     DATA$Phase <- factor(as.character(DATA$Phase), levels=c("Pre log linear","Log linear","Current", "Deaths"), ordered = TRUE)
   #  DEATHS$Phase <- factor(as.character(DEATHS$Phase), levels=c("Pre log linear","Log linear","Current", "Deaths"), ordered = TRUE)
@@ -303,8 +257,7 @@ plotPred <- function(
       ggplot(DATA, aes(x = Date, y = Actual, color = Phase)) +
       geom_point(size = 2, na.rm = TRUE) +
       coord_cartesian(ylim = c(1,10000000), expand = TRUE, clip = "on") +
-      geom_line(data=DATA[DATA$Phase != "Deaths",], size = 1, aes(y=Predicted.LL), color="blue", na.rm = TRUE) +
-      geom_line(data=DATA[DATA$Phase != "Deaths",], size = 1, aes(y=Predicted.SD), color="red", na.rm = TRUE) +
+      geom_line(data=DATA[DATA$Phase != "Deaths",], size = 1, aes(y=Predicted), color="red", na.rm = TRUE) +
       labs(
         title = paste("Steve's", Title,"projection as of", Sys.Date()),
         y = "Actual (points) / Predicted (line)",
@@ -341,112 +294,158 @@ plotPred <- function(
         size = 3
       )
 
-    DELTA <- data.frame(
+    INSET <- data.frame(
       Date = extendedDates,
       Total = 0,
-      Delta = 0
+      Delta = 0,
+      doublingTime = NA, 
+      stringsAsFactors = FALSE
     )
-
+   
     for (i in 2:nrow(CASES))
     {
-      switch(
-        CASES$Phase[i],
-        'Pre log linear' = DELTA$Total[i] <- CASES$Actual[i],
-        'Log linear'     = DELTA$Total[i] <- CASES$Predicted.LL[i],
-        )
+      INSET$Total[i] <- CASES$Actual[i]
     }
-    X <- end:nrow(DELTA)
+    X <- end:nrow(INSET)
     L <- length(X)
-    DELTA$Total[X] <- exp(covid_fn(fit, L))
+    INSET$Total[X] <- exp(covid_fn(fit, L))
 
     # Cumulative case numbers cannot drop, needed because of merging reported cases with predicted cases.
-    N <- nrow(DELTA)
-    DELTA$Total[is.na(DELTA$Total)] <- 0
+    N <- nrow(INSET)
+    INSET$Total[is.na(INSET$Total)] <- 0
     for (i in N:2)
     {
-      if (DELTA$Total[i-1] > DELTA$Total[i]) DELTA$Total[i-1] <- DELTA$Total[i]
+      if (INSET$Total[i-1] > INSET$Total[i]) INSET$Total[i-1] <- INSET$Total[i]
+    }
+    INSET$Total[is.na(INSET$Total)] <- 0
+    
+    # Calculate Doubling Times
+    X <- 1:5
+    for (i in 40:N)
+    {
+      if (INSET$Total[i-4] > 0)
+      {
+        Y <- log(INSET$Total[(i-4):i])
+        INSET$doublingTime[i] <- 0.693 / lm(Y ~ X)$coefficients[2]
+      }
+    }
+    INSET$doublingTime[INSET$doublingTime > 30] <- 30.123456 # No point in showing a doubling time > 30 days. This is a unique placeholder so other calculation can occur
+    INSET$doublingTime[INSET$doublingTime < 0] <- 0
+
+    INSET$Delta[2:N] <- INSET$Total[2:N] - INSET$Total[1:(N-1)]
+    INSET$Source <- "Reported"
+    INSET$Source[INSET$Date > today] <- "Predicted"
+    
+    Reported <- closest(INSET$Delta[INSET$Date <= today], max(INSET$Delta[INSET$Date <= today])/2)
+    Predicted <- closest(INSET$Delta[INSET$Date > today], (max(INSET$Delta[INSET$Date > today])+min(INSET$Delta[INSET$Date > today]))/2) + allDays
+    
+    topINSET <- cbind(INSET[,c("Date", "Delta","Source")], "New Cases / Day")
+    bottomINSET <- cbind(INSET[,c("Date", "doublingTime","Source")],"Doubling Time")
+    bottomINSET$Source[INSET$Source == "Reported"] <- "Calculated"
+    names(topINSET) <- names(bottomINSET) <- c("Date","Y","Source","Wrap")
+    
+    Reported <- 
+      closest(
+        topINSET$Y[topINSET$Date <= today], 
+        max(topINSET$Y[topINSET$Date <= today], na.rm=TRUE)/2)
+    Calculated <- 
+      closest(
+        bottomINSET$Y[bottomINSET$Date <= today], 
+        max(bottomINSET$Y[bottomINSET$Date <= today], na.rm=TRUE)/2)+ nrow(topINSET)
+    Predicted1 <- 
+      closest(
+        topINSET$Y[topINSET$Date > today], 
+        (
+          max(topINSET$Y[topINSET$Date > today], na.rm=TRUE)+
+          min(topINSET$Y[topINSET$Date > today], na.rm=TRUE)
+          )/2) + allDays 
+    Predicted2 <- 
+      closest(
+        bottomINSET$Y[bottomINSET$Date > today], 
+        (
+          max(bottomINSET$Y[bottomINSET$Date > today], na.rm=TRUE)+
+            min(bottomINSET$Y[bottomINSET$Date > today], na.rm=TRUE)
+        )/2) + allDays + nrow(topINSET)
+    
+     INSET <- rbind(topINSET, bottomINSET)
+
+    ann_text <- data.frame(
+      Date = c(INSET$Date[Reported] - 1, INSET$Date[Predicted1] +1, INSET$Date[Calculated] - 1, INSET$Date[Predicted2] +1),
+      Y =    c(INSET$Y[Reported], INSET$Y[Predicted1], INSET$Y[Calculated],INSET$Y[Predicted2]),
+      Text = c("Reported","Predicted", "Calculated", "Predicted"),
+      hjust = c(1.2, -0.2, 1.2, -0.2),
+      vjust = c(-0.2, -0.2, -0.2, -0.2),
+      color = c("black","brown","black","brown"),
+      Wrap = c("New Cases / Day", "New Cases / Day", "Doubling Time","Doubling Time"),
+      stringsAsFactors = FALSE
+    )
+    today_line <- data.frame(
+      Date = c(today + 0.5, today + 0.5, today + 0.5, today + 0.5),
+      Y = c(0, max(INSET$Y, na.rm = TRUE), 0, 30),
+      Wrap = c("New Cases / Day", "New Cases / Day", "Doubling Time","Doubling Time")
+    )
+    
+    today_text <- data.frame(
+      Date = c(today, today), 
+      Y =    c(0, 0), 
+      Text = c("today","today"),
+      hjust = c(-0.5, -0.5),
+      vjust = c(-0.5, -0.5),
+      Wrap = c("New Cases / Day", "Doubling Time"),
+      stringsAsFactors = FALSE
+    )
+      
+    if (topINSET$Y[topINSET$Date == today] < max(topINSET$Y)/2)
+    {
+      today_text$Y[1] <- max(topINSET$Y)
+      today_text$hjust[1] <- 1.5
     }
 
-
-    DELTA$Delta[2:N] <- DELTA$Total[2:N] - DELTA$Total[1:(N-1)]
-    DELTA$Source <- "Reported"
-    DELTA$Source[DELTA$Date > today] <- "Predicted"
-    DELTA$Source <- factor(DELTA$Source, levels = c("Reported","Predicted"), ordered = TRUE)
+    if (bottomINSET$Y[bottomINSET$Date == today] < 15)
+    {
+      today_text$Y[2] <- 30
+      today_text$hjust[2] <- 1.5
+    }
     
-    Reported <- closest(DELTA$Delta[DELTA$Date <= today], max(DELTA$Delta[DELTA$Date <= today])/2)
-    Predicted <- closest(DELTA$Delta[DELTA$Date > today], (max(DELTA$Delta[DELTA$Date > today])+min(DELTA$Delta[DELTA$Date > today]))/2) + allDays
+    INSET$Wrap <- factor(INSET$Wrap, c("New Cases / Day", "Doubling Time"), ordered = TRUE)
+    ann_text$Wrap <- factor(ann_text$Wrap, c("New Cases / Day", "Doubling Time"), ordered = TRUE)
+    today_line$Wrap <- factor(today_line$Wrap, c("New Cases / Day", "Doubling Time"), ordered = TRUE)
+    today_text$Wrap <- factor(today_text$Wrap, c("New Cases / Day", "Doubling Time"), ordered = TRUE)
+    INSET$Y[INSET$Y == 30.123456] <- NA  # Get rid of values > 30
     
-    ggObject2 <- ggplot(DELTA, aes(x=Date, y = Delta)) + 
-      geom_point(data = DELTA[DELTA$Date <= today,], size = 0.8, na.rm = TRUE, show.legend = FALSE, color = "black") +
-      geom_line(data = DELTA[DELTA$Date > today,], size = 0.8, na.rm = TRUE, show.legend = FALSE, color = "brown") +
-      scale_color_manual(values = c("black","brown")) +
-      labs(
-        y = "New Cases / Day"
-      ) +
-      scale_y_continuous(
-        labels = scales::comma_format(big.mark = ',',
-                                    decimal.mark = '.')) +
-      theme(
-        axis.text=element_text(size=6),
-        axis.title=element_text(size=8)      ) + 
-      annotate("segment",x = today, xend = today, y = 0, yend = max(DELTA$Delta), color = "blue") +
-      annotate(
-        "text", 
-        label = "Reported", 
-        color = "black", 
-        x = DELTA$Date[Reported] - 1, 
-        y = DELTA$Delta[Reported],
-        hjust = 1.2, 
-        vjust = -0.2, 
-        size = 2
-      ) +
-      annotate(
-        "text", 
-        label = "Predicted", 
-        color = "brown", 
-        x = DELTA$Date[Predicted] + 1, 
-        y = DELTA$Delta[Predicted],
-        hjust = -0.2, 
-        vjust = -0.2,
-        size = 2
-      )
-    
-  if (DELTA$Delta[DELTA$Date == today] > max(DELTA$Delta)/2)
-  {
-    ggObject2 <- ggObject2 +
-      annotate(
-        "text", 
-        label = "Today", 
-        color = "blue", 
-        x = today, 
-        y = 0,
-        hjust = -0.1, 
-        vjust = -0.5,
-        angle = 90,
-        size = 2
-      )
-  } else {
-    ggObject2 <- ggObject2 +
-      annotate(
-        "text", 
-        label = "Today", 
-        color = "blue", 
-        x = today, 
-        y = max(DELTA$Delta),
-        hjust = 1.1, 
-        vjust = -0.5,
-        angle = 90,
-        size = 2
-      )
-    
-  }
-      
-    ggObject3 <-  ggdraw() +
-      draw_plot(ggObject) +
-      draw_plot(ggObject2, x = 0.145, y = .605, width = .29, height = .28)
-
-    nextSlide(ggObject3, Title)
-  }
+  ggObject2 <- 
+    ggplot(INSET, aes(x=Date, y = Y)) + 
+    geom_point(data = INSET[INSET$Date <= today,], size = 0.7, na.rm = TRUE, show.legend = FALSE, color = "black") +
+    geom_line(data = INSET[INSET$Date > today,], size = 0.8, na.rm = TRUE, show.legend = FALSE, color = "brown") +
+    scale_color_manual(values = c("black","brown")) +
+    labs(
+      y = "New Cases / Day"
+    ) +
+    labs(y=NULL) +
+    scale_y_continuous(
+      labels = scales::comma_format(big.mark = ',',
+                                  decimal.mark = '.')) +
+    geom_text(data = ann_text, aes(label = Text, hjust = hjust, vjust = vjust, color = color), size = 2.5, show.legend = FALSE) +
+    geom_text(data = today_text, aes(label = Text, hjust = hjust, vjust = vjust), color="blue", angle = 90, size=2, show.legend = FALSE) +
+    geom_line(data = today_line, color = "blue") +
+    theme(
+      axis.text=element_text(size=6),
+      axis.title=element_text(size=8),
+      strip.background = element_blank(),
+      strip.placement = "outside" 
+      ) + 
+    facet_grid(
+      Wrap ~ .,
+      scales="free_y",
+      switch = "y",
+      shrink=FALSE
+  )
+  
+  ggObject3 <-  ggdraw() +
+    draw_plot(ggObject) +
+    draw_plot(ggObject2, x = 0.12, y = .405, width = .29, height = .50)
+  nextSlide(ggObject3, Title)
+}
 
   # US Data
   Country <- "United States of America"
@@ -455,37 +454,42 @@ plotPred <- function(
   logStart <- "2020-02-29"
   logEnd   <- "2020-03-22"
   Title <- "USA"
+  weight <- 1
   plotPred(Country = "United States of America", Title = "USA", logStart = "2020-02-28", logEnd = "2020-03-21")
   plotPred(County = "New York County", Title = "New York City", logStart = "2020-03-02", logEnd = "2020-03-21", 
            weight = 2)
-  plotPred(State = "CA", Title = "California", logStart = "2020-03-02", logEnd = "2020-03-20", weight = 1.5)
+  plotPred(State = "CA", Title = "California", logStart = "2020-03-02", logEnd = "2020-03-25", weight = 0)
   plotPred(County = c("Santa Clara County", "San Mateo County"), Title = "Santa Clara and San Mateo", 
-           logStart = "2020-03-02", logEnd = "2020-03-18", weight = 1.5)
-  plotPred(County = "San Francisco County", Title = "San Francisco", logStart = "2020-03-07", logEnd = "2020-03-25")
+           logStart = "2020-03-02", logEnd = "2020-03-20", weight = 1)
+  plotPred(County = "San Francisco County", Title = "San Francisco", logStart = "2020-03-07", logEnd = "2020-03-27")
   plotPred(County = "San Luis Obispo County", Title = "San Luis Obispo", logStart = "2020-03-16", logEnd = "2020-03-25")
   plotPred(County = "King County", State = "WA", Title = "King County (Seattle)", logStart = "2020-02-29", logEnd = "2020-03-10", weight=0)
   plotPred(County = "Los Angeles County", State = "CA", Title = "Los Angeles", logStart = "2020-03-04", 
            logEnd = "2020-03-27", weight = 1.5)
   plotPred(County = "Multnomah County", Title = "Multnomah County (Portland)", logStart = "2020-03-16", logEnd = "2020-03-23")
   plotPred(County = "Westchester County", Title = "Westchester County", logStart = "2020-03-15", 
-           logEnd = "2020-03-24", weight = 1.5)
+           logEnd = "2020-03-26", weight = 1)
   plotPred(County = "Alameda County", Title = "Alameda County", logStart = "2020-03-05", logEnd = "2020-03-24")
   plotPred(County = c("Santa Clara County", "San Mateo County", "San Francisco County", "Marin County", "Napa County", "Solano County", "Sonoma County"), Title = "Bay Area", logStart = "2020-03-02", logEnd = "2020-03-12")
   plotPred(County = "De Soto Parish", Title = "De Soto Parish, Louisiana", logStart = "2020-03-22", logEnd = "2020-03-25")
   plotPred(County = "Bergen County", Title = "Bergen County", logStart = "2020-03-14", 
-           logEnd = "2020-03-20", weight = 1.5)
+           logEnd = "2020-03-25", weight = 1.5)
   plotPred(County = "Dallas County", State = "TX", Title = "Dallas Texas", logStart = "2020-03-10", logEnd = "2020-03-20")
   plotPred(County = "Collin County", State = "TX", Title = "Collin Texas", logStart = "2020-03-19", logEnd = "2020-03-20")
   plotPred(County = "Harris County", State = "TX", Title = "Harris County, Texas", logStart = "2020-03-20", logEnd = "2020-03-21")
-  plotPred(County = "McLean County", State = "IL", Title = "McLean County, Illinois", logStart = "2020-03-20", logEnd = "2020-03-23")
+  plotPred(County = "McLean County", State = "IL", Title = "McLean County, Illinois", logStart = "2020-03-20",
+           logEnd = "2020-03-26")
   plotPred(County = "Cook County", State = "IL", Title = "Cook County, Illinois", logStart = "2020-03-06", logEnd = "2020-03-20")
   plotPred(County = "Suffolk County", State = "MA", Title = "Suffolk County (Boston)", logStart = "2020-03-10", logEnd = "2020-03-24")
   plotPred(State = "UT", Title = "Utah (State)", logStart = "2020-03-02", logEnd = "2020-03-18")
-  plotPred(County = "Utah County", Title = "Utah County", logStart = "2020-03-02", logEnd = "2020-03-26", weight=1.5)
-  plotPred(County = "Polk County", State = "IA", Title = "Polk County, Iowa", logStart = "2020-03-02", logEnd = "2020-03-20")
+  plotPred(County = "Utah County", Title = "Utah County", logStart = "2020-03-02", 
+           logEnd = "2020-03-28", weight=1)
+  plotPred(County = "Polk County", State = "IA", Title = "Polk County, Iowa", logStart = "2020-03-02", 
+           logEnd = "2020-03-27")
   plotPred(County = "Oakland County", State = "MI", Title = "Oakland County, Michigan", logStart = "2020-03-02", logEnd = "2020-03-22")
   plotPred(State = "HI", Title = "Hawaii", logStart = "2020-03-02", logEnd = "2020-03-22")
   plotPred(County = "City of St. Louis", Title = "St. Louis (City)", logStart = "2020-03-02", logEnd = "2020-03-25")
+  plotPred(County = "St. Louis County", Title = "St. Louis (County)", logStart = "2020-03-02", logEnd = "2020-03-25")
   plotPred(County = "Baltimore City", Title = "Baltimore (City)", logStart = "2020-03-02", logEnd = "2020-03-25")
   
   # Last week doubling times by state
@@ -500,8 +504,8 @@ plotPred <- function(
     stringsAsFactors = FALSE
   )
   last <- ncol(Cases_USA)
-  X <- 1:7
-  first <- last - 6
+  X <- 1:5
+  first <- last - 4
   
   for (i in 1:nrow(STATES))
   {
@@ -522,6 +526,7 @@ plotPred <- function(
   }
     
   STATES$dtime <- 0.693/STATES$slope
+  STATES$dtime[STATES$dtime > 25] <- 25
   STATES$PredWeek  <- exp(STATES$intercept + (STATES$peak - STATES$intercept) * (1-exp(-STATES$k *  7))) / STATES$population * 100
   STATES$Pred30Day <- exp(STATES$intercept + (STATES$peak - STATES$intercept) * (1-exp(-STATES$k * 30))) / STATES$population * 100
   
@@ -649,33 +654,41 @@ plotPred <- function(
   plotPred(Country = "Spain", Title = "Spain", logStart = "2020-02-25", logEnd = "2020-03-13")
   plotPred(Country = "France", Title = "France", logStart = "2020-02-27", logEnd = "2020-03-10")
   plotPred(Country = "Portugal", Title = "Portugal", logStart = "2020-03-03", logEnd = "2020-03-17")
-  plotPred(Country = "Sweden", Title = "Sweden", logStart = "2020-02-28", logEnd = "2020-03-12")
-  plotPred(Country = "Netherlands", Title = "Netherlands", logStart = "2020-02-29", logEnd = "2020-03-06")
-  plotPred(Country = "England", Title = "United Kingdom", logStart = "2020-02-26", logEnd = "2020-03-20")
+  plotPred(Country = "Sweden", Title = "Sweden", logStart = "2020-02-28", 
+           logEnd = "2020-03-15", weight=0)
+  plotPred(Country = "Netherlands", Title = "Netherlands", logStart = "2020-02-29", 
+           logEnd = "2020-03-12")
+  plotPred(Country = "England", Title = "United Kingdom", logStart = "2020-02-26", 
+           logEnd = "2020-03-25")
   plotPred(Country = "South Africa", Title = "South Africa", logStart = "2020-03-08", logEnd = "2020-03-27", weight = 0)
-  plotPred(Country = "Brazil", Title = "Brazil", logStart = "2020-03-09", logEnd = "2020-03-21", weight = 0)
+  plotPred(Country = "Brazil", Title = "Brazil", logStart = "2020-03-09", 
+           logEnd = "2020-03-22", weight = 0)
   plotPred(Country = "Paraguay", Title = "Paraguay", logStart = "2020-03-09", logEnd = "2020-03-22", weight = 0)
   plotPred(Country = "Rwanda", Title = "Rwanda", logStart = "2020-03-12", logEnd = "2020-03-19")
   plotPred(Country = "Canada", Title = "Canada", logStart = "2020-03-10", logEnd = "2020-03-22")
-  plotPred(Country = "Australia", Title = "Australia", logStart = "2020-03-10", logEnd = "2020-03-18", weight=0)
+  plotPred(Country = "Australia", Title = "Australia", logStart = "2020-03-10", 
+           logEnd = "2020-03-20", weight=0)
   plotPred(Country = "Israel", Title = "Israel", logStart = "2020-02-27", logEnd = "2020-03-25", weight=0)
+  plotPred(Country = "Russia", Title = "Russia", logStart = "2020-03-11", logEnd = "2020-03-25", weight=1)
+  plotPred(Country = "India", Title = "India", logStart = "2020-03-06", logEnd = "2020-03-25", weight=0)
+  plotPred(Country = "Japan", Title = "Japan", logStart = "2020-02-20", 
+           logEnd = "2020-03-30", weight=0)
+  plotPred(Country = "Mexico", Title = "Mexico", logStart = "2020-02-20", 
+           logEnd = "2020-03-30", weight=0)
   
   # World Map of Cases
   CROWS <- match(worldmap$geounit, Cases_Global$Country)
   worldmap$cases <- Cases_Global[CROWS, ncol(Cases_Global)]
   worldmap$lcases <- log(worldmap$cases)
+  CROWS <- match(worldmap$geounit, Deaths_Global$Country)
+  worldmap$deaths <- Deaths_Global[CROWS, ncol(Deaths_Global)]
+  worldmap$ldeaths <- log(worldmap$deaths)
   
   worldmap <- worldmap[!is.na(worldmap$lcases),]
     
   ggObject <-   ggplot() + 
       geom_sf(data = worldmap, color="#00013E", aes(fill=lcases)) +
       scale_fill_gradient(low="#FFCFCF",high="#C00000") +
-      # coord_sf(
-      #   crs = st_crs('+proj=gall'),
-      #   xlim = c(-11168658, 11168658),
-      #   ylim = c(-6600000, 8500000),
-      #   expand = FALSE
-      # )+
     labs(
       title = paste("Total Cases as of", Sys.Date())
     ) +
@@ -693,23 +706,87 @@ plotPred <- function(
         axis.text.y=element_blank(),
         axis.ticks.y=element_blank()
       )
-  # ggpubr::ggexport(
-  #   ggObject,
-  #   filename = "Worldmap.png", 
-  #   resolution = 72,
-  #   height = 144,
-  #   width = 240,
-  #   pointsize = 4,
-  #   verbose = FALSE
-  # )
-  # pngfileName <- gsub(".png","001.png",pngfileName) #Weird!
-  # print(ggObject)
-  # 
-  # pptx <- add_slide(pptx, layout = "Title and Content", master = master)
-  # pptx <- ph_with(pptx, value = "Worldwide Distribution of cases", location = ph_location_type("title"))
-  # pptx <- ph_with(pptx, external_img(src = "worldmap001.png"), location = ph_location_type("body"))
-  # pptx <- ph_with(pptx, value = slideNumber, location = ph_location_type("sldNum"))
   nextSlide(ggObject, "Worldwide Distribution of Cases")
+  
+  ggObject <-   ggplot() + 
+    geom_sf(data = worldmap, color="#00013E", aes(fill=ldeaths)) +
+    scale_fill_gradient(low="#FFCFCF",high="#C00000") +
+    labs(
+      title = paste("Total Deaths as of", Sys.Date())
+    ) +
+    theme(
+      panel.background = element_rect(
+        fill = "#00013E"
+      ),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      legend.position = "none",
+      axis.title.x=element_blank(),
+      axis.text.x=element_blank(),
+      axis.ticks.x=element_blank(),
+      axis.title.y=element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks.y=element_blank()
+    )
+  nextSlide(ggObject, "Worldwide Distribution of Deaths")
+  
+# Doubling Time by Country
+  doubling_Global <- data.frame(
+  Country = Cases_Global$Country,
+  doublingTime = NA
+  )
+  
+  cols <- (ncol(Cases_Global)-4):ncol(Cases_Global)
+  X <- 1:5
+  for (i in 1:nrow(doubling_Global))
+  {
+    if (Cases_Global[i,cols[1]] > 0)
+    {
+      Y <- unlist(log(Cases_Global[i,cols]))
+      doubling_Global$doublingTime[i] <- 0.693 / lm(Y ~ X)$coefficients[2]
+    }
+  }
+  doubling_Global <- doubling_Global[!is.na(doubling_Global$doublingTime),]
+  doubling_Global <- doubling_Global[!is.infinite(doubling_Global$doublingTime),]
+  doubling_Global$doublingTime[doubling_Global$doublingTime < 0] <- 0
+  doubling_Global$doublingTime[doubling_Global$doublingTime > 30] <- 30
+
+  CROWS <- match(worldmap$geounit, doubling_Global$Country)
+  worldmap$doublingTime <- doubling_Global$doublingTime[CROWS]
+
+  ggObject <-   ggplot() + 
+    geom_sf(data = worldmap, color="#00013E", aes(fill=doublingTime)) +
+    scale_fill_gradient(high="#FFCFCF",low="#C00000") +
+    labs(
+      title = paste("Doubling Time as of", Sys.Date())
+    ) +
+    theme(
+      panel.background = element_rect(
+        fill = "#00013E"
+      ),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+ #     legend.position = "none",
+      axis.title.x=element_blank(),
+      axis.text.x=element_blank(),
+      axis.ticks.x=element_blank(),
+      axis.title.y=element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks.y=element_blank()
+    )
+  nextSlide(ggObject, "Worldwide Doubling Time")
+  
+  doubling_Global$Country <- factor(doubling_Global$Country, levels = doubling_Global$Country[order(doubling_Global$doublingTime)], ordered = TRUE)
+  Title <- paste("5 day doubling time as of", Sys.Date())
+  ggObject <- ggplot(doubling_Global, aes(x=Country, y=doublingTime)) +
+    geom_col(fill = "brown", color="black", width=.5) +
+    theme(axis.text.x=element_text(angle=90, hjust=1, size = 6)) +
+    labs(
+      title = Title,
+      y = "Doubling Time",
+      x = "Country"
+    )
+  nextSlide(ggObject, "Doubling Time")
   
   print(pptx, target = pptxfileName)
 } else {
