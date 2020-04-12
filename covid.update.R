@@ -56,7 +56,7 @@
     c(
       "This is not confidential and can be freely shared. The code is available at https://github.com/StevenLShafer/COVID19/.",
       "",
-      "This is my analysis, not Stanford's. My understanding is that Stanford's internal analysis, done to plan resource allocation at Stanford, shows substantially longer doubling times. This is reassuring for those of us working at Stanford.",
+      "This is my analysis, not Stanford's.",
       "",
       "Data sources:",
       "       USA Data:     https://usafactsstatic.blob.core.windows.net/public/data/covid-19/covid_confirmed_usafacts.csv.",
@@ -65,10 +65,10 @@
       "Nate Silver has an excellent write-up on the potential problems of the data (see https://fivethirtyeight.com/features/coronavirus-case-counts-are-meaningless/). He is right, of course, but these data are all we have. Also, he does not address the fact that the data are consistent with the expections. Specifically, the increases are initially log-linear, but then \"flatten\" as expected when public health policies are implemented. We would not see this if the data were just random noise.",
       "",
       "Models:",
-      "       Log linear phase: log(Y) = intercept + slope * time",
-      "       Asymptotic phase: log(y) = intercept + peak * (1 - exp(k * time))",
+      "       Primary (applied to the red dots on the graph): log(y) = intercept + (peak - intercept) * (1 - exp(k * time))",
+      "       Log linear: log(Y) = intercept + slope * time, used to compute doubling time (0.693/slope).",
       "",
-      "The number printed on the graph is the projection for a week from today. Because that is only a week out, it is probably not far off. The \"peak\" in the caption is the estimated total peak at time = infinity from the model. I have very little confidence because it is a projection well into the future, and very sensitive to small errors in that data.",
+      "The number printed on the graph is the projection for a week from today. Doubling times are calculated for 5 day windows.",
       "",
       "The idiosyncratic locations are where Pamela and I have family or friends, or are locations requested by friends. I'm happy to add other regions. Also, I'm happy to add people to the blind CC distribution list. Just let me know.",
       "",
@@ -480,10 +480,11 @@ plotPred <- function(
   plotPred(County = "McLean County", State = "IL", Title = "McLean County, Illinois", logStart = "2020-03-20",
            logEnd = "2020-03-26")
   plotPred(County = "Cook County", State = "IL", Title = "Cook County, Illinois", logStart = "2020-03-06", logEnd = "2020-03-20")
-  plotPred(County = "Suffolk County", State = "MA", Title = "Suffolk County (Boston)", logStart = "2020-03-10", logEnd = "2020-03-24")
+  plotPred(County = "Suffolk County", State = "MA", Title = "Suffolk County (Boston)", logStart = "2020-03-10", 
+           logEnd = "2020-03-27", weight = 2)
   plotPred(State = "UT", Title = "Utah (State)", logStart = "2020-03-02", logEnd = "2020-03-18")
   plotPred(County = "Utah County", Title = "Utah County", logStart = "2020-03-02", 
-           logEnd = "2020-03-28", weight=1)
+           logEnd = "2020-04-02", weight=1)
   plotPred(County = "Polk County", State = "IA", Title = "Polk County, Iowa", logStart = "2020-03-02", 
            logEnd = "2020-03-27")
   plotPred(County = "Oakland County", State = "MI", Title = "Oakland County, Michigan", logStart = "2020-03-02", logEnd = "2020-03-22")
@@ -491,6 +492,7 @@ plotPred <- function(
   plotPred(County = "City of St. Louis", Title = "St. Louis (City)", logStart = "2020-03-02", logEnd = "2020-03-25")
   plotPred(County = "St. Louis County", Title = "St. Louis (County)", logStart = "2020-03-02", logEnd = "2020-03-25")
   plotPred(County = "Baltimore City", Title = "Baltimore (City)", logStart = "2020-03-02", logEnd = "2020-03-25")
+  plotPred(County = "Durham County", Title = "Durham County", logStart = "2020-03-17", logEnd = "2020-03-24")
   
   # Last week doubling times by state
   STATES <- data.frame(
@@ -651,28 +653,30 @@ plotPred <- function(
   
   # Worldwide
   plotPred(Country = "Italy", Title = "Italy", logStart = "2020-02-22", logEnd = "2020-03-13", weight = 0)
-  plotPred(Country = "Spain", Title = "Spain", logStart = "2020-02-25", logEnd = "2020-03-13")
-  plotPred(Country = "France", Title = "France", logStart = "2020-02-27", logEnd = "2020-03-10")
+  plotPred(Country = "Spain", Title = "Spain", logStart = "2020-02-25", 
+           logEnd = "2020-03-21")
+  plotPred(Country = "France", Title = "France", logStart = "2020-02-27", 
+           logEnd = "2020-04-04", weight = 0)
   plotPred(Country = "Portugal", Title = "Portugal", logStart = "2020-03-03", logEnd = "2020-03-17")
   plotPred(Country = "Sweden", Title = "Sweden", logStart = "2020-02-28", 
            logEnd = "2020-03-15", weight=0)
   plotPred(Country = "Netherlands", Title = "Netherlands", logStart = "2020-02-29", 
-           logEnd = "2020-03-12")
+           logEnd = "2020-03-19")
   plotPred(Country = "England", Title = "United Kingdom", logStart = "2020-02-26", 
            logEnd = "2020-03-25")
   plotPred(Country = "South Africa", Title = "South Africa", logStart = "2020-03-08", logEnd = "2020-03-27", weight = 0)
   plotPred(Country = "Brazil", Title = "Brazil", logStart = "2020-03-09", 
-           logEnd = "2020-03-22", weight = 0)
+           logEnd = "2020-03-23", weight = 0)
   plotPred(Country = "Paraguay", Title = "Paraguay", logStart = "2020-03-09", logEnd = "2020-03-22", weight = 0)
   plotPred(Country = "Rwanda", Title = "Rwanda", logStart = "2020-03-12", logEnd = "2020-03-19")
   plotPred(Country = "Canada", Title = "Canada", logStart = "2020-03-10", logEnd = "2020-03-22")
   plotPred(Country = "Australia", Title = "Australia", logStart = "2020-03-10", 
            logEnd = "2020-03-20", weight=0)
   plotPred(Country = "Israel", Title = "Israel", logStart = "2020-02-27", logEnd = "2020-03-25", weight=0)
-  plotPred(Country = "Russia", Title = "Russia", logStart = "2020-03-11", logEnd = "2020-03-25", weight=1)
+  plotPred(Country = "Russia", Title = "Russia", logStart = "2020-03-11", logEnd = "2020-04-02", weight=1)
   plotPred(Country = "India", Title = "India", logStart = "2020-03-06", logEnd = "2020-03-25", weight=0)
   plotPred(Country = "Japan", Title = "Japan", logStart = "2020-02-20", 
-           logEnd = "2020-03-30", weight=0)
+           logEnd = "2020-03-30", weight=1)
   plotPred(Country = "Mexico", Title = "Mexico", logStart = "2020-02-20", 
            logEnd = "2020-03-30", weight=0)
   
@@ -777,7 +781,7 @@ plotPred <- function(
   nextSlide(ggObject, "Worldwide Doubling Time")
   
   doubling_Global$Country <- factor(doubling_Global$Country, levels = doubling_Global$Country[order(doubling_Global$doublingTime)], ordered = TRUE)
-  Title <- paste("5 day doubling time as of", Sys.Date())
+  Title <- paste("Doubling Time over the last 5 days as of", Sys.Date())
   ggObject <- ggplot(doubling_Global, aes(x=Country, y=doublingTime)) +
     geom_col(fill = "brown", color="black", width=.5) +
     theme(axis.text.x=element_text(angle=90, hjust=1, size = 6)) +
@@ -786,7 +790,7 @@ plotPred <- function(
       y = "Doubling Time",
       x = "Country"
     )
-  nextSlide(ggObject, "Doubling Time")
+  nextSlide(ggObject, "Doubling Time (last 5 days")
   
   print(pptx, target = pptxfileName)
 } else {
