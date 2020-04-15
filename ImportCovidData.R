@@ -1,9 +1,11 @@
-library(rnaturalearth)
-library(rnaturalearthdata)
-library(rgeos)
-library(maptools)
-library(usmap)
-library(rgdal)
+suppressPackageStartupMessages({
+  library(rnaturalearth)
+  library(rnaturalearthdata)
+  library(rgeos)
+  library(maptools)
+  library(usmap)
+  library(rgdal)
+})
 
 SOURCE <- "https://usafactsstatic.blob.core.windows.net/public/data/covid-19/covid_confirmed_usafacts.csv"
 Cases_USA <- read.csv(SOURCE, stringsAsFactors = FALSE)
