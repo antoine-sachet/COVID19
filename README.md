@@ -6,6 +6,13 @@ This is not confidential. The analyses and R program code and can be freely shar
 
 This is my analysis, not Stanford's. 
 
+## Run it yourself
+
+You can run the analysis yourself in one of two ways:
+
+1. You can create a PowerPoint with many analysis graphs by running the `covid.update.R` script.
+2. You can run an interactive Shiny application that allows you to choose a location and some parameters to graph by opening the `app.R` file in the RStudio IDE and clicking the "Run App" button.
+
 ## Data sources:
 
 - [USA Data](https://usafactsstatic.blob.core.windows.net/public/data/covid-19/covid_confirmed_usafacts.csv)
@@ -24,10 +31,3 @@ The idiosyncratic locations are where Pamela and I have family or friends, or ar
 Please send any questions to steven.shafer@stanford.edu.
 
 Steven L. Shafer, MD
-
-## Run it yourself
-
-You can run the analysis yourself in one of two ways:
-
-1. You can create a PowerPoint with many analysis graphs by running the `covid.update.R` script.
-2. You can run an interactive Shiny application that allows you to choose a location and some parameters to graph by opening the `app.R` file in the RStudio IDE and clicking the "Run App" button.
