@@ -2,6 +2,8 @@ library(rnaturalearth)
 library(rnaturalearthdata)
 library(rgeos)
 library(maptools)
+library(usmap)
+library(rgdal)
 
 SOURCE <- "https://usafactsstatic.blob.core.windows.net/public/data/covid-19/covid_confirmed_usafacts.csv"
 Cases_USA <- read.csv(SOURCE, stringsAsFactors = FALSE)
@@ -255,7 +257,11 @@ Counties <- usmap_transform(Counties)
 
 # IHME Data
 SOURCE <- "https://ihmecovid19storage.blob.core.windows.net/latest/ihme-covid19.zip"
-temp <- "IHME.zip"
+temp <- tempfile(fileext = ".zip")
 download.file(SOURCE, temp)
-fileNames <- unzip(temp, list=FALSE)
+fileNames <- unzip(temp, list=FALSE, exdir = tempdir())
+csvFile <- grep("\\.csv$", fileNames, value = TRUE)[1]
+if (is.na(csvFile)) {
+  stop("ZIP file didn't contain a CSV file")
+}
 IHME <- read.csv(fileNames[1], stringsAsFactors=FALSE)
