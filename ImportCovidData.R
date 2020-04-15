@@ -1,5 +1,8 @@
-# Load Data
-# USA
+library(rnaturalearth)
+library(rnaturalearthdata)
+library(rgeos)
+library(maptools)
+
 SOURCE <- "https://usafactsstatic.blob.core.windows.net/public/data/covid-19/covid_confirmed_usafacts.csv"
 Cases_USA <- read.csv(SOURCE, stringsAsFactors = FALSE)
 SOURCE <- "https://usafactsstatic.blob.core.windows.net/public/data/covid-19/covid_deaths_usafacts.csv"
@@ -10,16 +13,16 @@ names(Population_USA) <- c("STATE", "COUNTY", "State", "County", "Population")
 
 # Notes
 # Create states database (FIPS, Abbreviation, Full)
-  states <- data.frame(
-    FIPS = unique(Cases_USA$stateFIPS)
-  )
-  states$abbreviation <- Cases_USA$State[match(states$FIPS, Cases_USA$stateFIPS)]
-  states$state <- Population_USA$State[match(states$FIPS, Population_USA$STATE)]
+states <- data.frame(
+  FIPS = unique(Cases_USA$stateFIPS)
+)
+states$abbreviation <- Cases_USA$State[match(states$FIPS, Cases_USA$stateFIPS)]
+states$state <- Population_USA$State[match(states$FIPS, Population_USA$STATE)]
 
 # Countys with a Code of 0 match the entire state. Will set population to 0, to match unallocated cases in 
 # Cases_USE and Deaths_USA
 Population_USA$Population[Population_USA$COUNTY == 0] <- 0
-  
+
 # The county FIPS in the usafacts data is the state * 1000 + the county. Need to add this to the
 # county population data
 Population_USA$CountyFIPS <- Population_USA$STATE * 1000 + Population_USA$COUNTY
@@ -45,7 +48,7 @@ NYCU <- which(Cases_USA$County.Name == "New York City Unallocated")
 Cases_USA[NYC, 5:ncol(Cases_USA)] <-
   Cases_USA[NYC , 5:ncol(Cases_USA)] +
   Cases_USA[NYCU, 5:ncol(Cases_USA)]
-  
+
 Deaths_USA[NYC, 5:ncol(Deaths_USA)] <-
   Deaths_USA[NYC , 5:ncol(Deaths_USA)] +
   Deaths_USA[NYCU, 5:ncol(Deaths_USA)]
@@ -64,7 +67,7 @@ Deaths_USA <- Deaths_USA[order(Deaths_USA$CountyFIPS),]
 Population_USA <- Population_USA[order(Population_USA$CountyFIPS),]
 
 if (sum(Cases_USA$CountyFips != Deaths_USA$CountyFIPS) > 0)
-    cat("Matching failed between allCases and allDeaths\n")
+  cat("Matching failed between allCases and allDeaths\n")
 if (sum(Cases_USA$CountyFips != Population_USA$CountyFIPS) > 0)
   cat("Matching failed between allCases and Population\n")
 
@@ -74,16 +77,19 @@ Cases_Global <- read.csv(SOURCE, stringsAsFactors = FALSE)
 SOURCE <- "https://github.com/CSSEGISandData/COVID-19/raw/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv"
 Deaths_Global <- read.csv(SOURCE, stringsAsFactors = FALSE)
 
-X <- 5:ncol(Cases_Global)
-Dates <- gsub("X", "", names(Cases_Global)[X])
-DATA <- data.frame(
-  Date = Dates,
-  Shanghai_Cases = unlist(Cases_Global[Cases_Global == "Shanghai", X]),
-  Shanghai_Deaths = unlist(Deaths_Global[Deaths_Global == "Shanghai", X]),
-  Beijing_Cases = unlist(Cases_Global[Cases_Global == "Beijing", X]),
-  Beijing_Deaths = unlist(Deaths_Global[Deaths_Global == "Beijing", X])
-)
-write.csv(DATA, file = "Beijing.Shanghai.COVID.csv", row.names = FALSE)
+# TODO (Dean) The following China code was not doing anything except writing a CSV
+# file that isn't read by anyone, so I commented it. It should either be used or removed.
+
+# X <- 5:ncol(Cases_Global)
+# Dates <- gsub("X", "", names(Cases_Global)[X])
+# DATA <- data.frame(
+#   Date = Dates,
+#   Shanghai_Cases = unlist(Cases_Global[Cases_Global == "Shanghai", X]),
+#   Shanghai_Deaths = unlist(Deaths_Global[Deaths_Global == "Shanghai", X]),
+#   Beijing_Cases = unlist(Cases_Global[Cases_Global == "Beijing", X]),
+#   Beijing_Deaths = unlist(Deaths_Global[Deaths_Global == "Beijing", X])
+# )
+# write.csv(DATA, file = "Beijing.Shanghai.COVID.csv", row.names = FALSE)
 # Notes
 # Verified that data are in exactly the same order
 
@@ -171,7 +177,7 @@ for (i in 1:length(missing))
   X <- which(Cases_Global$Province.State == worldmap$geounit[missing[i]])
   if (length(X) > 0)
   {
-#    cat("Setting ",worldmap$geounit[missing[i]], "to",Cases_Global$Country.Region[X],"\n")
+    #    cat("Setting ",worldmap$geounit[missing[i]], "to",Cases_Global$Country.Region[X],"\n")
     worldmap$geounit[missing[i]] <- Cases_Global$Country.Region[X]
   }
 }
@@ -218,7 +224,7 @@ for (i in 1:nrow(Cases))
         Cases_Global$Country.Region == Cases$Country[i],
         c(5:ncol(Cases_Global))],
       na.rm=TRUE
-      )
+    )
   Deaths[i,2:ncol(Deaths)] <-
     colSums(
       Deaths_Global[
@@ -228,10 +234,14 @@ for (i in 1:nrow(Cases))
     )
   Population$Population[i] <-
     sum(worldmap$pop_est[
-        worldmap$geounit == Cases$Country[i]],
+      worldmap$geounit == Cases$Country[i]],
       na.rm=TRUE
     )
 }
+
+today <- Sys.Date()  
+startDate <- as.Date("2020-01-22")
+allDays <- as.numeric(today-startDate)
 
 Cases_Global <- Cases[,1:(allDays+1)]
 Deaths_Global <- Deaths[,1:(allDays+1)]
