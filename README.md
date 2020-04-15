@@ -1,15 +1,17 @@
-# COVID19
-Tracking the COVID-19 pandemic
+# Tracking the COVID-19 pandemic
 
-Caveats / Comments
+## Caveats / Comments
 
 This is not confidential. The analyses and R program code and can be freely shared.
 
 This is my analysis, not Stanford's. 
 
-Data sources:
-       USA Data:     https://usafactsstatic.blob.core.windows.net/public/data/covid-19/covid_confirmed_usafacts.csv.
-       Global Data:  https://github.com/CSSEGISandData/COVID-19. This is the Johns Hopkins data repository.
+## Data sources:
+
+- [USA Data](https://usafactsstatic.blob.core.windows.net/public/data/covid-19/covid_confirmed_usafacts.csv)
+- [Global Data](https://github.com/CSSEGISandData/COVID-19) This is the Johns Hopkins data repository
+
+## Description
 
 Nate Silver has an excellent write-up on the potential problems of the data (see https://fivethirtyeight.com/features/coronavirus-case-counts-are-meaningless/). He is right, of course, but these data are all we have. Also, he does not address the fact that the data are consistent with the expectations. Specifically, the increases are initially log-linear, but then "flatten" as expected when public health policies are implemented. We would not see this if the data were just random noise.
 
@@ -22,3 +24,10 @@ The idiosyncratic locations are where Pamela and I have family or friends, or ar
 Please send any questions to steven.shafer@stanford.edu.
 
 Steven L. Shafer, MD
+
+## Run it yourself
+
+You can run the analysis yourself in one of two ways:
+
+1. You can create a PowerPoint with many analysis graphs by running the `covid.update.R` script.
+2. You can run an interactive Shiny application that allows you to choose a location and some parameters to graph by opening the `app.R` file in the RStudio IDE and clicking the "Run App" button.
